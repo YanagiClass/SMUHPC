@@ -8,7 +8,7 @@
 
 #define NUM_DATA 1024
 
-// problem 1: vecMulDiv 커널 구현
+// CUDA 커널: 벡터 a, b, c에 대한 연산 (a * b) / c = d 수행
 __global__ void vecMulDiv(double *a, double *b, double *c, double *d, int n) {
     int idx = blockDim.x * blockIdx.x + threadIdx.x;
     if (idx < n) {
@@ -48,69 +48,66 @@ int main(void)
     for(int i = 0; i < NUM_DATA; i++){
         a[i] = rand() % 10;
         b[i] = rand() % 10;
-        c[i] = rand() % 10 + 1;  // 0으로 나누는 것을 방지하기 위해 +1 추가
+        c[i] = rand() % 10 + 1;  // 나눗셈에서 0을 방지하기 위해 +1 추가
     }
 
     // vector sum on host
     timer.onTimer(4);
-    
     for(int i = 0; i < NUM_DATA; i++)
         hd[i] = a[i] * b[i] / c[i];
-
     timer.offTimer(4);
 
-    // problem 2: CUDA API 사용
+    // CUDA Memory allocation
+    timer.onTimer(0);
+    cudaMalloc((void **)&da, memsize);
+    cudaMalloc((void **)&db, memsize);
+    cudaMalloc((void **)&dc, memsize);
+    cudaMalloc((void **)&dd, memsize);
 
-    timer.onTimer(0);  // CUDA Total timer 시작
-
-    // CUDA 메모리 할당
-    cudaMalloc((void**)&da, memsize);
-    cudaMalloc((void**)&db, memsize);
-    cudaMalloc((void**)&dc, memsize);
-    cudaMalloc((void**)&dd, memsize);
-
-    // host -> device 메모리 복사
+    // Memory copy: host -> device
     timer.onTimer(2);
     cudaMemcpy(da, a, memsize, cudaMemcpyHostToDevice);
     cudaMemcpy(db, b, memsize, cudaMemcpyHostToDevice);
     cudaMemcpy(dc, c, memsize, cudaMemcpyHostToDevice);
     timer.offTimer(2);
 
-    // CUDA 커널 실행
+    // GPU에서 벡터 연산 수행
     timer.onTimer(1);
-    int threadsPerBlock = 256;
-    int blocksPerGrid = (NUM_DATA + threadsPerBlock - 1) / threadsPerBlock;
-    vecMulDiv<<<blocksPerGrid, threadsPerBlock>>>(da, db, dc, dd, NUM_DATA);
-    cudaDeviceSynchronize();  // 커널 실행 완료 대기
+    int blockSize = 256;
+    int gridSize = (NUM_DATA + blockSize - 1) / blockSize;
+    vecMulDiv<<<gridSize, blockSize>>>(da, db, dc, dd, NUM_DATA);
+    cudaDeviceSynchronize();
     timer.offTimer(1);
 
-    // device -> host 메모리 복사
+    // Memory copy: device -> host
     timer.onTimer(3);
     cudaMemcpy(d, dd, memsize, cudaMemcpyDeviceToHost);
     timer.offTimer(3);
 
-    timer.offTimer(0);  // CUDA Total timer 종료
+    // problem 2
 
     // check results
     result = memcmp(d, hd, memsize);
 
-    if (result == 0)
+    if (result ==0)
         printf("The data sum on the device (GPU) is the same as the data sum on the host (CPU)\n");
     else
         printf("The data sum on the device (GPU) is not the same as the data sum on the host (CPU)\n");
 
-    // 메모리 해제
+    // memory deallocation on device and host
     cudaFree(da);
     cudaFree(db);
     cudaFree(dc);
     cudaFree(dd);
-    
-    // memory deallocation on host
+
     free(a);
     free(b);
     free(c);
     free(d);
     free(hd);
 
+    timer.offTimer(0);
+
+    timer.printTimer();
     return 0;
 }
