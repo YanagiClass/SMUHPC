@@ -11,6 +11,16 @@
 #define BLOCK_SIZE 16
 
 // problem 1
+__global__ void matVecMul(float *A, float *B, float *C, int m, int k) {
+    int row = blockIdx.x * blockDim.x + threadIdx.x;
+    if (row < m) {
+        float sum = 0;
+        for (int i = 0; i < k; i++) {
+            sum += A[row * k + i] * B[i];
+        }
+        C[row] = sum;
+    }
+}
 
 int main(void)
 {
@@ -52,12 +62,10 @@ int main(void)
 
     // matrix multiplication on host (CPU)
     timer.onTimer(4);
-    
-	for (int row = 0; row < m; row++)
-		for (int col = 0; col < n; col++)
+    for (int row = 0; row < m; row++)
+        for (int col = 0; col < n; col++)
             for (int offset = 0; offset < k; offset++)
-			    hC[row * n + col] += A[row * k + offset] * B[offset * n + col];
-	
+                hC[row * n + col] += A[row * k + offset] * B[offset * n + col];
     timer.offTimer(4);
 
     // memory allocation on device
@@ -80,7 +88,9 @@ int main(void)
 
     // kernel call (matrix multiplication on device (GPU))
     timer.onTimer(1);
-    // problem 2
+    dim3 blockDim(BLOCK_SIZE);
+    dim3 gridDim((m + BLOCK_SIZE - 1) / BLOCK_SIZE);
+    matVecMul<<<gridDim, blockDim>>>(dA, dB, dC, m, k);
     cudaDeviceSynchronize();
     timer.offTimer(1);
     
@@ -101,10 +111,10 @@ int main(void)
     // check results
     result = memcmp(C, hC, sizeof(float) * sizeC);
 
-    if (result ==0)
-        printf("The matrix multiplication on the device (GPU) is the same as the the host (CPU)\n");
+    if (result == 0)
+        printf("The matrix multiplication on the device (GPU) is the same as the host (CPU)\n");
     else
-        printf("The matrix multiplication on the device (GPU) is not the same as the the host (CPU)\n");
+        printf("The matrix multiplication on the device (GPU) is not the same as the host (CPU)\n");
 
     // memory deallocation on host
     free(A);
